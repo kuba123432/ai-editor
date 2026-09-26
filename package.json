@@ -1,0 +1,16 @@
+{
+  "name": "ai-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI-powered video editor",
+  "scripts": {
+    "edit": "node src/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "openai": "^4.68.0",
+    "dotenv": "^16.4.5",
+    "yargs": "^17.7.2"
+  }
+}
