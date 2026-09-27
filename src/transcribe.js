@@ -35,13 +35,22 @@ export async function transcribeAudio(audioPath) {
     file: fs.createReadStream(audioPath),
     model: "whisper-large-v3-turbo",
     response_format: "verbose_json",
+    timestamp_granularities: ["segment", "word"],
   });
 
-  return transcription.segments.map((s) => ({
+  const segments = transcription.segments.map((s) => ({
     start: s.start,
     end: s.end,
     text: s.text.trim(),
   }));
+
+  const words = (transcription.words || []).map((w) => ({
+    word: w.word.trim(),
+    start: w.start,
+    end: w.end,
+  }));
+
+  return { segments, words };
 }
 
 export function formatTranscriptForPrompt(segments) {
