@@ -1,51 +1,99 @@
 import fs from "fs";
 
-function formatSrtTime(seconds) {
+function formatAssTime(seconds) {
   if (seconds < 0) seconds = 0;
-  const ms = Math.round((seconds % 1) * 1000);
-  const totalSeconds = Math.floor(seconds);
+  const totalCentiseconds = Math.round(seconds * 100);
+  const cs = totalCentiseconds % 100;
+  const totalSeconds = Math.floor(totalCentiseconds / 100);
   const s = totalSeconds % 60;
   const m = Math.floor(totalSeconds / 60) % 60;
   const h = Math.floor(totalSeconds / 3600);
   const pad = (n, len) => String(n).padStart(len, "0");
-  return pad(h, 2) + ":" + pad(m, 2) + ":" + pad(s, 2) + "," + pad(ms, 3);
+  return h + ":" + pad(m, 2) + ":" + pad(s, 2) + "." + pad(cs, 2);
 }
 
-export function buildSrtForClips(segments, clips) {
-  const entries = [];
+const ASS_HEADER =
+  "[Script Info]\n" +
+  "ScriptType: v4.00+\n" +
+  "PlayResX: 1280\n" +
+  "PlayResY: 720\n" +
+  "ScaledBorderAndShadow: yes\n" +
+  "WrapStyle: 2\n\n" +
+  "[V4+ Styles]\n" +
+  "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n" +
+  "Style: Default,Arial,64,&H0000FFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,3,1,2,40,40,80,1\n\n" +
+  "[Events]\n" +
+  "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n";
+
+export function buildAssKaraoke(words, clips) {
+  const remapped = [];
   let clipOffset = 0;
 
   for (const clip of clips) {
     const clipStart = clip.start;
     const clipEnd = clip.end;
-    const clipDuration = clipEnd - clipStart;
 
-    for (const seg of segments) {
-      const segStart = Math.max(seg.start, clipStart);
-      const segEnd = Math.min(seg.end, clipEnd);
-
-      if (segEnd > segStart) {
-        const newStart = clipOffset + (segStart - clipStart);
-        const newEnd = clipOffset + (segEnd - clipStart);
-        entries.push({ start: newStart, end: newEnd, text: seg.text.trim() });
+    for (const w of words) {
+      const wStart = Math.max(w.start, clipStart);
+      const wEnd = Math.min(w.end, clipEnd);
+      if (wEnd > wStart && w.word.length > 0) {
+        remapped.push({
+          word: w.word,
+          start: clipOffset + (wStart - clipStart),
+          end: clipOffset + (wEnd - clipStart),
+        });
       }
     }
 
-    clipOffset += clipDuration;
+    clipOffset += clipEnd - clipStart;
   }
 
-  let srt = "";
-  entries.forEach((entry, i) => {
-    srt += (i + 1) + "\n";
-    srt += formatSrtTime(entry.start) + " --> " + formatSrtTime(entry.end) + "\n";
-    srt += entry.text + "\n\n";
-  });
+  const MAX_WORDS_PER_LINE = 4;
+  const MAX_GAP_SECONDS = 0.6;
+  const lines = [];
+  let current = [];
 
-  return srt;
+  for (const w of remapped) {
+    if (current.length > 0) {
+      const prev = current[current.length - 1];
+      const gap = w.start - prev.end;
+      if (current.length >= MAX_WORDS_PER_LINE || gap > MAX_GAP_SECONDS) {
+        lines.push(current);
+        current = [];
+      }
+    }
+    current.push(w);
+  }
+  if (current.length > 0) lines.push(current);
+
+  let events = "";
+  for (const line of lines) {
+    const lineStart = line[0].start;
+    const lineEnd = line[line.length - 1].end;
+    let text = "";
+
+    for (let i = 0; i < line.length; i++) {
+      const w = line[i];
+      const nextStart = i < line.length - 1 ? line[i + 1].start : lineEnd;
+      const kCentiseconds = Math.max(1, Math.round((nextStart - w.start) * 100));
+      text += "{\\k" + kCentiseconds + "}" + w.word + " ";
+    }
+
+    events +=
+      "Dialogue: 0," +
+      formatAssTime(lineStart) +
+      "," +
+      formatAssTime(lineEnd) +
+      ",Default,,0,0,0,," +
+      text.trim() +
+      "\n";
+  }
+
+  return ASS_HEADER + events;
 }
 
-export function writeSrtFile(segments, clips, srtPath) {
-  const srt = buildSrtForClips(segments, clips);
-  fs.writeFileSync(srtPath, srt, "utf-8");
-  return srtPath;
+export function writeAssFile(words, clips, assPath) {
+  const ass = buildAssKaraoke(words, clips);
+  fs.writeFileSync(assPath, ass, "utf-8");
+  return assPath;
 }
