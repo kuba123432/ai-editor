@@ -18,7 +18,7 @@ export async function selectClips(transcriptText, userPrompt, totalDurationSecon
     "- Vyber jen tolik useku, kolik odpovida pozadovane delce/typu vystupu z promptu uzivatele.";
 
   const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+       model: "openai/gpt-oss-120b",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: "Instrukce uzivatele: \"" + userPrompt + "\"\n\nPrepis videa:\n" + transcriptText },
