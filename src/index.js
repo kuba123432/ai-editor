@@ -7,15 +7,16 @@ import { hideBin } from "yargs/helpers";
 
 import { extractAudio, transcribeAudio, formatTranscriptForPrompt } from "./transcribe.js";
 import { selectClips } from "./selectClips.js";
-import { buildEditedVideo, addWatermark, burnSubtitles } from "./cutVideo.js";
-import { writeSrtFile } from "./subtitles.js";
+import { buildEditedVideo, addWatermark, burnAssSubtitles } from "./cutVideo.js";
+import { writeAssFile } from "./subtitles.js";
 
 const argv = yargs(hideBin(process.argv))
   .option("input", { alias: "i", type: "string", demandOption: true, describe: "Cesta ke vstupnimu videu" })
   .option("prompt", { alias: "p", type: "string", demandOption: true, describe: "Co chces, aby AI z videa udelala" })
   .option("output", { alias: "o", type: "string", default: "output.mp4", describe: "Cesta k vyslednemu videu" })
   .option("watermark", { type: "boolean", default: true, describe: "Pridat watermark" })
-  .option("subtitles", { type: "boolean", default: true, describe: "Pridat vypalene titulky" })
+  .option("subtitles", { type: "boolean", default: true, describe: "Pridat vypalene titulky se zvyraznovanim slov" })
+  .option("zoom", { type: "boolean", default: true, describe: "Pridat jemny zoom efekt na kazdy vybrany klip" })
   .help()
   .parse();
 
@@ -55,26 +56,26 @@ async function main() {
   await extractAudio(argv.input, audioPath);
 
   console.log("3/6 Prepisuju rec na text (Whisper)...");
-  const segments = await transcribeAudio(audioPath);
+  const { segments, words } = await transcribeAudio(audioPath);
   const transcriptText = formatTranscriptForPrompt(segments);
-  console.log("    Nalezeno " + segments.length + " useku reci.");
+  console.log("    Nalezeno " + segments.length + " useku reci, " + words.length + " slov.");
 
   console.log("4/6 Vybiram nejlepsi momenty podle promptu (Claude)...");
   const clips = await selectClips(transcriptText, argv.prompt, durationSeconds);
   console.log("    AI vybrala " + clips.length + " useku.");
 
-  console.log("5/6 Strihaм a skladam finalni video...");
+  console.log("5/6 Strihaм a skladam finalni video" + (argv.zoom ? " (se zoomem, muze trvat dele)" : "") + "...");
   const cutOutput = path.join(tmpDir, "cut.mp4");
-  await buildEditedVideo(argv.input, clips, cutOutput, tmpDir);
+  await buildEditedVideo(argv.input, clips, cutOutput, tmpDir, { zoom: argv.zoom });
 
   let currentOutput = cutOutput;
 
   if (argv.subtitles) {
-    console.log("    Pridavam titulky...");
-    const srtPath = path.join(tmpDir, "subtitles.srt");
-    writeSrtFile(segments, clips, srtPath);
+    console.log("    Pridavam zvyraznujici titulky...");
+    const assPath = path.join(tmpDir, "subtitles.ass");
+    writeAssFile(words, clips, assPath);
     const withSubs = path.join(tmpDir, "with_subs.mp4");
-    await burnSubtitles(currentOutput, srtPath, withSubs);
+    await burnAssSubtitles(currentOutput, assPath, withSubs);
     currentOutput = withSubs;
   }
 
