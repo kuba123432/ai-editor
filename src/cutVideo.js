@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
-
+ 
 function runFfmpeg(args) {
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn("ffmpeg", args);
@@ -14,7 +14,7 @@ function runFfmpeg(args) {
     ffmpeg.on("error", (err) => reject(new Error("Nepodarilo se spustit ffmpeg: " + err.message)));
   });
 }
-
+ 
 function getVideoResolution(inputPath) {
   return new Promise((resolve, reject) => {
     const ffprobe = spawn("ffprobe", [
@@ -35,36 +35,41 @@ function getVideoResolution(inputPath) {
     ffprobe.on("error", (err) => reject(new Error("Nepodarilo se spustit ffprobe: " + err.message)));
   });
 }
-
+ 
 async function cutSingleClip(inputPath, start, end, outputPath, zoomOptions) {
   const duration = end - start;
   const args = ["-y", "-ss", String(start), "-i", inputPath, "-t", String(duration)];
-
+ 
   if (zoomOptions) {
     const { width, height, fps, maxZoom } = zoomOptions;
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const increment = (maxZoom - 1) / totalFrames;
     const zoomExpr = "min(zoom+" + increment.toFixed(6) + "," + maxZoom + ")";
     const vf =
-      "scale=" + width * 2 + ":" + height * 2 +
+      "scale=3840:-2" +
       ",zoompan=z='" + zoomExpr + "':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=" +
       width + "x" + height + ":fps=" + fps;
     args.push("-vf", vf);
   }
-
+ 
   args.push("-c:v", "libx264", "-c:a", "aac", "-avoid_negative_ts", "make_zero", outputPath);
-
+ 
   await runFfmpeg(args);
 }
-
+ 
 async function concatClips(clipPaths, outputPath, tmpDir) {
   const listPath = path.join(tmpDir, "concat_list.txt");
   const listContent = clipPaths.map((p) => "file '" + path.resolve(p) + "'").join("\n");
   fs.writeFileSync(listPath, listContent);
-
-  await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outputPath]);
+ 
+  await runFfmpeg([
+    "-y", "-f", "concat", "-safe", "0", "-i", listPath,
+    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
+    outputPath,
+  ]);
 }
-
+ 
 export async function addWatermark(inputPath, outputPath, text) {
   if (!text) text = "made with ai-editor";
   await runFfmpeg([
@@ -75,7 +80,7 @@ export async function addWatermark(inputPath, outputPath, text) {
     outputPath,
   ]);
 }
-
+ 
 export async function burnAssSubtitles(inputPath, assPath, outputPath) {
   await runFfmpeg([
     "-y",
@@ -85,17 +90,17 @@ export async function burnAssSubtitles(inputPath, assPath, outputPath) {
     outputPath,
   ]);
 }
-
+ 
 export async function buildEditedVideo(inputVideoPath, clips, outputPath, tmpDir, options) {
   options = options || {};
   fs.mkdirSync(tmpDir, { recursive: true });
-
+ 
   let zoomOptions = null;
   if (options.zoom) {
     const res = await getVideoResolution(inputVideoPath);
     zoomOptions = { width: res.width, height: res.height, fps: 30, maxZoom: 1.12 };
   }
-
+ 
   const clipPaths = [];
   for (let i = 0; i < clips.length; i++) {
     const start = clips[i].start;
@@ -104,7 +109,7 @@ export async function buildEditedVideo(inputVideoPath, clips, outputPath, tmpDir
     await cutSingleClip(inputVideoPath, start, end, clipPath, zoomOptions);
     clipPaths.push(clipPath);
   }
-
+ 
   if (clipPaths.length === 1) {
     fs.copyFileSync(clipPaths[0], outputPath);
   } else {
