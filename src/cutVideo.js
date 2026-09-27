@@ -55,6 +55,16 @@ export async function addWatermark(inputPath, outputPath, text) {
   ]);
 }
 
+export async function burnSubtitles(inputPath, srtPath, outputPath) {
+  await runFfmpeg([
+    "-y",
+    "-i", inputPath,
+    "-vf", "subtitles=" + srtPath + ":force_style='FontSize=22,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=40'",
+    "-c:a", "copy",
+    outputPath,
+  ]);
+}
+
 export async function buildEditedVideo(inputVideoPath, clips, outputPath, tmpDir) {
   fs.mkdirSync(tmpDir, { recursive: true });
 
