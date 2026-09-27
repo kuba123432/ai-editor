@@ -1,6 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
-const anthropic = new Anthropic();
+const groq = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1",
+});
 
 export async function selectClips(transcriptText, userPrompt, totalDurationSeconds) {
   const systemPrompt = "Jsi editor videa. Dostanes prepis videa s casovymi znackami (v sekundach) a instrukci od uzivatele.\n" +
@@ -14,34 +17,26 @@ export async function selectClips(transcriptText, userPrompt, totalDurationSecon
     "- Useky se nesmi prekryvat.\n" +
     "- Vyber jen tolik useku, kolik odpovida pozadovane delce/typu vystupu z promptu uzivatele.";
 
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2000,
-    system: systemPrompt,
+  const completion = await groq.chat.completions.create({
+    model: "llama-3.3-70b-versatile",
     messages: [
-      {
-        role: "user",
-        content: "Instrukce uzivatele: \"" + userPrompt + "\"\n\nPrepis videa:\n" + transcriptText,
-      },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: "Instrukce uzivatele: \"" + userPrompt + "\"\n\nPrepis videa:\n" + transcriptText },
     ],
   });
 
-  const rawText = message.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
+  const rawText = (completion.choices[0].message.content || "").trim();
 
   let clips;
   try {
     const cleaned = rawText.replace(/^```json\s*|```$/g, "").trim();
     clips = JSON.parse(cleaned);
   } catch (err) {
-    throw new Error("Claude nevratil validni JSON. Syrova odpoved:\n" + rawText + "\n\nChyba parsovani: " + err.message);
+    throw new Error("Model nevratil validni JSON. Syrova odpoved:\n" + rawText + "\n\nChyba parsovani: " + err.message);
   }
 
   if (!Array.isArray(clips) || clips.length === 0) {
-    throw new Error("Claude nevybral zadne useky. Zkus upravit prompt.");
+    throw new Error("Model nevybral zadne useky. Zkus upravit prompt.");
   }
 
   return clips;
