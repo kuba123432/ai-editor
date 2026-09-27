@@ -2,7 +2,10 @@ import { spawn } from "child_process";
 import fs from "fs";
 import OpenAI from "openai";
 
-const openai = new OpenAI();
+const groq = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1",
+});
 
 export function extractAudio(inputVideoPath, outputAudioPath) {
   return new Promise((resolve, reject) => {
@@ -25,14 +28,13 @@ export function extractAudio(inputVideoPath, outputAudioPath) {
 export async function transcribeAudio(audioPath) {
   const fileSizeMb = fs.statSync(audioPath).size / (1024 * 1024);
   if (fileSizeMb > 24) {
-    throw new Error("Zvukovy soubor ma " + fileSizeMb.toFixed(1) + " MB. Whisper API ma limit 25 MB.");
+    throw new Error("Zvukovy soubor ma " + fileSizeMb.toFixed(1) + " MB. Limit je 25 MB.");
   }
 
-  const transcription = await openai.audio.transcriptions.create({
+  const transcription = await groq.audio.transcriptions.create({
     file: fs.createReadStream(audioPath),
-    model: "whisper-1",
+    model: "whisper-large-v3-turbo",
     response_format: "verbose_json",
-    timestamp_granularities: ["segment"],
   });
 
   return transcription.segments.map((s) => ({
