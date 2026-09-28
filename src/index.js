@@ -94,6 +94,14 @@ async function main() {
     fs.copyFileSync(currentOutput, argv.output);
   }
 
+  if (process.argv.includes("--vertical")) {
+    console.log("    Prevadim na 9:16 (Reels)...");
+    const { makeVertical } = await import("./cutVideo.js");
+    const flatPath = path.join(tmpDir, "flat.mp4");
+    fs.copyFileSync(argv.output, flatPath);
+    await makeVertical(flatPath, argv.output);
+  }
+
   console.log("\nHotovo! Vysledek: " + argv.output);
 }
 

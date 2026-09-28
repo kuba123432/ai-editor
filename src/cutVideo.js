@@ -117,3 +117,22 @@ export async function buildEditedVideo(inputVideoPath, clips, outputPath, tmpDir
     await concatClips(clipPaths, outputPath, tmpDir);
   }
 }
+
+
+export async function makeVertical(inputPath, outputPath) {
+  const filter =
+    "[0:v]split=2[bg][fg];" +
+    "[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:3[bgb];" +
+    "[fg]scale=1080:-2:flags=lanczos[fgs];" +
+    "[bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1[v]";
+  await runFfmpeg([
+    "-y",
+    "-i", inputPath,
+    "-filter_complex", filter,
+    "-map", "[v]",
+    "-map", "0:a?",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    "-c:a", "copy",
+    outputPath,
+  ]);
+}
