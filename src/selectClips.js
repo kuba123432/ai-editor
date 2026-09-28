@@ -94,6 +94,46 @@ function parseJsonArray(rawText) {
   return JSON.parse(rawText.slice(start, end + 1));
 }
 
+const SENTENCE_END = /[.!?…]["')\]]*$/;
+const MAX_EXTEND = 6; // max sekund, o kolik smime klip prodlouzit do konce vety
+
+function extendClipsToSentenceEnd(clips, words, totalDurationSeconds) {
+  const hasWords = words && words.length > 0;
+  for (const c of clips) {
+    const lw = c._lastWord;
+    delete c._lastWord;
+    if (!hasWords || lw === null || lw === undefined || lw < 0) continue;
+    if (SENTENCE_END.test(words[lw].word)) continue;
+
+    const limit = words[lw].end + MAX_EXTEND;
+    let j = lw;
+    while (
+      j < words.length - 1 &&
+      !SENTENCE_END.test(words[j].word) &&
+      words[j + 1].end <= limit
+    ) {
+      j++;
+    }
+    if (!SENTENCE_END.test(words[j].word)) continue;
+
+    const wordEnd = words[j].end;
+    const nextStart = j < words.length - 1 ? words[j + 1].start : totalDurationSeconds;
+    const newEnd = Math.min(
+      totalDurationSeconds,
+      wordEnd + Math.min(PAD_AFTER, Math.max(0, (nextStart - wordEnd) / 2))
+    );
+
+    let overlap = false;
+    for (const o of clips) {
+      if (o !== c && o.start < newEnd && o.end > c.end) overlap = true;
+    }
+    if (overlap) continue;
+
+    c.end = newEnd;
+    c.text = (c.text + " " + words.slice(lw + 1, j + 1).map((x) => x.word).join(" ")).replace(/\s+/g, " ").trim();
+  }
+}
+
 export function picksToClips(picks, units, words, totalDurationSeconds) {
   const used = new Set();
   const clips = [];
@@ -139,12 +179,15 @@ export function picksToClips(picks, units, words, totalDurationSeconds) {
       role: String(p.role || ""),
       subtitles: p.subtitles === true,
       reason: String(p.reason || ""),
+      _lastWord: last.last,
       text: units
         .slice(from, to + 1)
         .map((u) => u.text)
         .join(" "),
     });
   }
+
+  extendClipsToSentenceEnd(clips, words, totalDurationSeconds);
 
   if (clips.length > 0) clips[0].subtitles = false;
 
