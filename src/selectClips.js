@@ -95,7 +95,7 @@ function parseJsonArray(rawText) {
 }
 
 const SENTENCE_END = /[.!?…]["')\]]*$/;
-const MAX_EXTEND = 6; // max sekund, o kolik smime klip prodlouzit do konce vety
+const MAX_EXTEND = 9; // max sekund, o kolik smime klip prodlouzit do konce vety
 
 function extendClipsToSentenceEnd(clips, words, totalDurationSeconds) {
   const hasWords = words && words.length > 0;
@@ -315,6 +315,24 @@ async function shortlistUnits(units, userPrompt) {
   return candidates.map((c) => c.unit);
 }
 
+function trimToTarget(clips, targetDuration) {
+  const len = (c) => c.end - c.start;
+  const total = () => clips.reduce((n, c) => n + len(c), 0);
+  while (clips.length > 3 && total() > targetDuration + DURATION_TOLERANCE) {
+    let idx = -1;
+    for (let i = 1; i < clips.length - 1; i++) {
+      if (idx === -1 || len(clips[i]) > len(clips[idx])) idx = i;
+    }
+    if (idx === -1) break;
+    console.log(
+      "    Zkracuji: vyhazuji klip " + (idx + 1) + " (" + len(clips[idx]).toFixed(1) +
+      " s), soucet byl " + total().toFixed(1) + " s."
+    );
+    clips.splice(idx, 1);
+  }
+  return clips;
+}
+
 export async function selectClips(segments, words, userPrompt, totalDurationSeconds) {
   const targetDuration = extractTargetDuration(userPrompt);
   const allUnits = buildUnits(words, segments);
@@ -383,6 +401,7 @@ export async function selectClips(segments, words, userPrompt, totalDurationSeco
       const picks = parseJsonArray(rawText);
       if (!Array.isArray(picks)) throw new Error("Odpoved neni pole.");
       clips = picksToClips(picks, units, words, totalDurationSeconds);
+      clips = trimToTarget(clips, targetDuration);
       if (clips.length === 0) problem = "Nevybral jsi zadne platne useky. Pouzij cisla vet z prepisu.";
     } catch (err) {
       lastError = new Error("Model nevratil validni JSON. Syrova odpoved:\n" + rawText + "\n\nChyba parsovani: " + err.message);
