@@ -5,12 +5,21 @@ const groq = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
 });
 
-const MAX_PAUSE = 0.8; // pauza v reci delsi nez tohle = konec vety
-const SOFT_MAX_UNIT = 7; // dlouhou vetu radeji rozdelime u carky
-const HARD_MAX_UNIT = 11; // nejdelsi povolena veta v sekundach
-const PAD_BEFORE = 0.12; // kolik pridat pred zacatek vety
-const PAD_AFTER = 0.3; // kolik pridat za konec vety
-const DURATION_TOLERANCE = 5; // o kolik sekund smi vysledek minout cil
+const MAX_PAUSE = 0.8;
+const SOFT_MAX_UNIT = 7;
+const HARD_MAX_UNIT = 11;
+const PAD_BEFORE = 0.12;
+const PAD_AFTER = 0.3;
+const DURATION_TOLERANCE = 5;
+
+const SHORTLIST_THRESHOLD = 120; // nad tolik vet se pouzije dvoukolovy vyber
+const SHORTLIST_CHUNK_SIZE = 90; // kolik vet posilame v jedne davce
+const SHORTLIST_PER_CHUNK = 8; // kolik nejlepsich vet vytahnout z kazde davky
+const SHORTLIST_DELAY_MS = 65000; // pauza mezi davkami kvuli limitu tokenu/min
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function extractTargetDuration(userPrompt) {
   const match = userPrompt.match(/(\d+)\s*(sekund|vterin|sec|s\b)/i);
@@ -18,7 +27,6 @@ function extractTargetDuration(userPrompt) {
   return 30;
 }
 
-// Rozdeli prepis na cele vety/repliky. Strih pak nikdy nepadne doprostred vety.
 export function buildUnits(words, segments) {
   if (!words || words.length === 0) {
     return (segments || []).map((s) => ({
@@ -86,7 +94,6 @@ function parseJsonArray(rawText) {
   return JSON.parse(rawText.slice(start, end + 1));
 }
 
-// Prevede vyber vet (from/to) na casy v puvodnim videu.
 export function picksToClips(picks, units, words, totalDurationSeconds) {
   const used = new Set();
   const clips = [];
@@ -99,7 +106,6 @@ export function picksToClips(picks, units, words, totalDurationSeconds) {
     from = Math.max(0, from);
     to = Math.min(units.length - 1, to);
 
-    // vety, ktere uz pouzil jiny usek, oriznout z okraju
     while (from <= to && used.has(from)) from++;
     while (to >= from && used.has(to)) to--;
     if (from > to) continue;
@@ -140,7 +146,6 @@ export function picksToClips(picks, units, words, totalDurationSeconds) {
     });
   }
 
-  // Prvni usek (hook) je vzdy bez titulku.
   if (clips.length > 0) clips[0].subtitles = false;
 
   return clips;
@@ -150,12 +155,94 @@ function totalLength(clips) {
   return clips.reduce((sum, c) => sum + (c.end - c.start), 0);
 }
 
+function chunkArray(arr, size) {
+  const chunks = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
+}
+
+// Prvni kolo pro dlouha videa: z kazde davky vet vytahne jen tu nejzajimavejsi hrstku,
+// aby se do druheho (finalniho) kola poslalo mnohem min textu a vlezlo se to do limitu tokenu/min.
+async function shortlistUnits(units, userPrompt) {
+  const chunks = chunkArray(units, SHORTLIST_CHUNK_SIZE);
+  const candidates = [];
+  const seen = new Set();
+
+  for (let c = 0; c < chunks.length; c++) {
+    const offset = c * SHORTLIST_CHUNK_SIZE;
+    const chunk = chunks[c];
+
+    const chunkText = chunk
+      .map(
+        (u, i) =>
+          "#" + (offset + i + 1) + " [" + u.start.toFixed(1) + "s-" + u.end.toFixed(1) + "s] " + u.text
+      )
+      .join("\n");
+
+    const systemPrompt =
+      "Dostanes cast prepisu dlouheho videa (ocislovane vety) a instrukci uzivatele. " +
+      "Vyber az " + SHORTLIST_PER_CHUNK + " nejzajimavejsich, nejpoutavejsich nebo nejprekvapivejsich vet z teto casti, " +
+      "ktere by mohly byt soucasti kratkeho virelniho videa. " +
+      "Odpovez VYHRADNE JSON polem cisel vet, napr. [12, 45, 78]. Zadny dalsi text, zadne markdown bloky.";
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: "Instrukce uzivatele: \"" + userPrompt + "\"\n\nCast prepisu:\n" + chunkText,
+      },
+    ];
+
+    try {
+      const completion = await groq.chat.completions.create({
+        model: "openai/gpt-oss-20b",
+        messages: messages,
+      });
+      const rawText = (completion.choices[0].message.content || "").trim();
+      const picks = parseJsonArray(rawText);
+
+      for (const n of picks) {
+        const idx = Math.round(Number(n)) - 1;
+        if (Number.isNaN(idx) || idx < 0 || idx >= units.length) continue;
+        if (seen.has(idx)) continue;
+        seen.add(idx);
+        candidates.push({ idx: idx, unit: units[idx] });
+      }
+    } catch (err) {
+      console.log("    (davka " + (c + 1) + "/" + chunks.length + " selhala, preskakuji: " + err.message + ")");
+    }
+
+    console.log("    Davka " + (c + 1) + "/" + chunks.length + " hotova, zatim " + candidates.length + " kandidatu.");
+
+    if (c < chunks.length - 1) {
+      console.log("    Cekam kvuli limitu Groq (tokeny/min)...");
+      await sleep(SHORTLIST_DELAY_MS);
+    }
+  }
+
+  candidates.sort((a, b) => a.idx - b.idx);
+  return candidates.map((c) => c.unit);
+}
+
 export async function selectClips(segments, words, userPrompt, totalDurationSeconds) {
   const targetDuration = extractTargetDuration(userPrompt);
-  const units = buildUnits(words, segments);
+  const allUnits = buildUnits(words, segments);
 
-  if (units.length === 0) {
+  if (allUnits.length === 0) {
     throw new Error("V ramci videa nebyla nalezena zadna rec, neni z ceho vybirat.");
+  }
+
+  let units = allUnits;
+
+  if (allUnits.length > SHORTLIST_THRESHOLD) {
+    console.log("    Video ma " + allUnits.length + " vet, nejdriv delam predvyber po davkach...");
+    units = await shortlistUnits(allUnits, userPrompt);
+    if (units.length < 3) {
+      console.log("    Predvyber vratil malo kandidatu, pouzivam cely prepis.");
+      units = allUnits;
+    } else {
+      console.log("    Predvyber hotovy: " + units.length + " kandidatnich vet.");
+    }
   }
 
   const systemPrompt =
@@ -191,7 +278,7 @@ export async function selectClips(segments, words, userPrompt, totalDurationSeco
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-20b",
       messages: messages,
     });
     const rawText = (completion.choices[0].message.content || "").trim();
