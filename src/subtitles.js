@@ -33,7 +33,8 @@ function escapeAss(text) {
   return text.replace(/\\/g, "").replace(/[{}]/g, "");
 }
 
-export function buildAssKaraoke(words, clips) {
+export function buildAssKaraoke(words, clips, opts) {
+  opts = opts || {};
   // 1) slova prepocitame na casovou osu vysledneho videa, jen z useku s titulky
   const remapped = [];
   let clipOffset = 0;
@@ -67,7 +68,7 @@ export function buildAssKaraoke(words, clips) {
 
   // 2) rozdelime na kratke radky (max 3 slova, konec vety = novy radek)
   const MAX_WORDS_PER_LINE = 3;
-  const MAX_CHARS_PER_LINE = 18;
+  const MAX_CHARS_PER_LINE = opts.vertical ? 14 : 18;
   const MAX_GAP_SECONDS = 0.6;
   const lines = [];
   let current = [];
@@ -132,11 +133,19 @@ export function buildAssKaraoke(words, clips) {
       ",Default,,0,0,0," + "," + text + "\n";
   }
 
-  return ASS_HEADER + events;
+  let header = ASS_HEADER;
+  if (opts.vertical) {
+    header = header
+      .replace("PlayResX: 1280", "PlayResX: 1080")
+      .replace("PlayResY: 720", "PlayResY: 1920")
+      .replace("Arial,72,", "Arial,88,")
+      .replace(",1,5,2,2,60,60,110,1", ",1,6,2,2,60,60,430,1");
+  }
+  return header + events;
 }
 
-export function writeAssFile(words, clips, assPath) {
-  const ass = buildAssKaraoke(words, clips);
+export function writeAssFile(words, clips, assPath, opts) {
+  const ass = buildAssKaraoke(words, clips, opts);
   fs.writeFileSync(assPath, ass, "utf-8");
   return assPath;
 }

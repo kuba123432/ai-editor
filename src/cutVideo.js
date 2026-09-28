@@ -71,12 +71,15 @@ async function concatClips(clipPaths, outputPath, tmpDir) {
   ]);
 }
  
-export async function addWatermark(inputPath, outputPath, text) {
+export async function addWatermark(inputPath, outputPath, text, options) {
   if (!text) text = "made with ai-editor";
+  const wmPos = options && options.vertical
+    ? "fontsize=36:x=(w-tw)/2:y=h*0.67"
+    : "fontsize=20:x=w-tw-20:y=h-th-20";
   await runFfmpeg([
     "-y",
     "-i", inputPath,
-    "-vf", "drawtext=text='" + text + "':fontcolor=white@0.7:fontsize=20:x=w-tw-20:y=h-th-20",
+    "-vf", "drawtext=text='" + text + "':fontcolor=white@0.7:" + wmPos,
     "-codec:a", "copy",
     outputPath,
   ]);

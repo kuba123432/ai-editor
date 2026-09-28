@@ -76,10 +76,19 @@ async function main() {
 
   let currentOutput = cutOutput;
 
+  const vertical = process.argv.includes("--vertical");
+  if (vertical) {
+    console.log("    Prevadim na 9:16 (Reels)...");
+    const { makeVertical } = await import("./cutVideo.js");
+    const vertPath = path.join(tmpDir, "vertical.mp4");
+    await makeVertical(cutOutput, vertPath);
+    currentOutput = vertPath;
+  }
+
   if (argv.subtitles && clips.some((c) => c.subtitles)) {
     console.log("    Pridavam titulky k napinavym momentum...");
     const assPath = path.join(tmpDir, "subtitles.ass");
-    writeAssFile(words, clips, assPath);
+    writeAssFile(words, clips, assPath, { vertical: vertical });
     const withSubs = path.join(tmpDir, "with_subs.mp4");
     await burnAssSubtitles(currentOutput, assPath, withSubs);
     currentOutput = withSubs;
@@ -89,17 +98,9 @@ async function main() {
 
   console.log("6/6 Pridavam watermark...");
   if (argv.watermark) {
-    await addWatermark(currentOutput, argv.output);
+    await addWatermark(currentOutput, argv.output, undefined, { vertical: vertical });
   } else {
     fs.copyFileSync(currentOutput, argv.output);
-  }
-
-  if (process.argv.includes("--vertical")) {
-    console.log("    Prevadim na 9:16 (Reels)...");
-    const { makeVertical } = await import("./cutVideo.js");
-    const flatPath = path.join(tmpDir, "flat.mp4");
-    fs.copyFileSync(argv.output, flatPath);
-    await makeVertical(flatPath, argv.output);
   }
 
   console.log("\nHotovo! Vysledek: " + argv.output);
