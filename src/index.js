@@ -5,7 +5,7 @@ import { spawn } from "child_process";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
-import { extractAudio, transcribeAudio, formatTranscriptForPrompt } from "./transcribe.js";
+import { extractAudio, transcribeAudio } from "./transcribe.js";
 import { selectClips } from "./selectClips.js";
 import { buildEditedVideo, addWatermark, burnAssSubtitles } from "./cutVideo.js";
 import { writeAssFile } from "./subtitles.js";
@@ -15,7 +15,7 @@ const argv = yargs(hideBin(process.argv))
   .option("prompt", { alias: "p", type: "string", demandOption: true, describe: "Co chces, aby AI z videa udelala" })
   .option("output", { alias: "o", type: "string", default: "output.mp4", describe: "Cesta k vyslednemu videu" })
   .option("watermark", { type: "boolean", default: true, describe: "Pridat watermark" })
-  .option("subtitles", { type: "boolean", default: true, describe: "Pridat vypalene titulky se zvyraznovanim slov" })
+  .option("subtitles", { type: "boolean", default: true, describe: "Pridat vypalene titulky (AI je da jen tam, kde davaji smysl)" })
   .option("zoom", { type: "boolean", default: true, describe: "Pridat jemny zoom efekt na kazdy vybrany klip" })
   .help()
   .parse();
@@ -57,26 +57,34 @@ async function main() {
 
   console.log("3/6 Prepisuju rec na text (Whisper)...");
   const { segments, words } = await transcribeAudio(audioPath);
-  const transcriptText = formatTranscriptForPrompt(segments);
   console.log("    Nalezeno " + segments.length + " useku reci, " + words.length + " slov.");
 
-  console.log("4/6 Vybiram nejlepsi momenty podle promptu (Claude)...");
-  const clips = await selectClips(transcriptText, argv.prompt, durationSeconds);
-  console.log("    AI vybrala " + clips.length + " useku.");
+  console.log("4/6 Vybiram nejlepsi momenty podle promptu (Groq)...");
+  const clips = await selectClips(segments, words, argv.prompt, durationSeconds);
+  console.log("    AI vybrala " + clips.length + " useku:");
+  clips.forEach((c, i) => {
+    console.log(
+      "    " + (i + 1) + ". [" + (c.role || "-") + "] " +
+      c.start.toFixed(1) + "s-" + c.end.toFixed(1) + "s" +
+      (c.subtitles ? " (titulky)" : "") + " \"" + c.text + "\""
+    );
+  });
 
-  console.log("5/6 Strihaм a skladam finalni video" + (argv.zoom ? " (se zoomem, muze trvat dele)" : "") + "...");
+  console.log("5/6 Striham a skladam finalni video" + (argv.zoom ? " (se zoomem, muze trvat dele)" : "") + "...");
   const cutOutput = path.join(tmpDir, "cut.mp4");
   await buildEditedVideo(argv.input, clips, cutOutput, tmpDir, { zoom: argv.zoom });
 
   let currentOutput = cutOutput;
 
-  if (argv.subtitles) {
-    console.log("    Pridavam zvyraznujici titulky...");
+  if (argv.subtitles && clips.some((c) => c.subtitles)) {
+    console.log("    Pridavam titulky k napinavym momentum...");
     const assPath = path.join(tmpDir, "subtitles.ass");
     writeAssFile(words, clips, assPath);
     const withSubs = path.join(tmpDir, "with_subs.mp4");
     await burnAssSubtitles(currentOutput, assPath, withSubs);
     currentOutput = withSubs;
+  } else if (argv.subtitles) {
+    console.log("    AI nepovazovala zadny usek za dost napinavy na titulky, preskakuji.");
   }
 
   console.log("6/6 Pridavam watermark...");
