@@ -134,6 +134,51 @@ function extendClipsToSentenceEnd(clips, words, totalDurationSeconds) {
   }
 }
 
+const MIN_CLIP_SECONDS = 3.5; // kratsi klipy se dotahnou o dalsi vetu
+const MAX_EXTEND_SHORT = 8; // max sekund navic pri dotahovani kratkych klipu
+
+function extendShortClips(clips, words, totalDurationSeconds) {
+  if (!words || words.length === 0) return;
+  for (const c of clips) {
+    if (c.end - c.start >= MIN_CLIP_SECONDS) continue;
+
+    let lw = -1;
+    for (let i = 0; i < words.length; i++) {
+      if (words[i].start < c.end) lw = i;
+      else break;
+    }
+    if (lw < 0) continue;
+
+    let j = lw;
+    let newEnd = c.end;
+    while (newEnd - c.start < MIN_CLIP_SECONDS) {
+      let k = j + 1;
+      if (k >= words.length) break;
+      while (k < words.length - 1 && !SENTENCE_END.test(words[k].word)) k++;
+      if (!SENTENCE_END.test(words[k].word)) break;
+      if (words[k].end - c.end > MAX_EXTEND_SHORT) break;
+
+      const wordEnd = words[k].end;
+      const nextStart = k < words.length - 1 ? words[k + 1].start : totalDurationSeconds;
+      newEnd = Math.min(
+        totalDurationSeconds,
+        wordEnd + Math.min(PAD_AFTER, Math.max(0, (nextStart - wordEnd) / 2))
+      );
+      j = k;
+    }
+    if (j === lw) continue;
+
+    let overlap = false;
+    for (const o of clips) {
+      if (o !== c && o.start < newEnd && o.end > c.start) overlap = true;
+    }
+    if (overlap) continue;
+
+    c.end = newEnd;
+    c.text = (c.text + " " + words.slice(lw + 1, j + 1).map((x) => x.word).join(" ")).replace(/\s+/g, " ").trim();
+  }
+}
+
 export function picksToClips(picks, units, words, totalDurationSeconds) {
   const used = new Set();
   const clips = [];
@@ -188,6 +233,7 @@ export function picksToClips(picks, units, words, totalDurationSeconds) {
   }
 
   extendClipsToSentenceEnd(clips, words, totalDurationSeconds);
+  extendShortClips(clips, words, totalDurationSeconds);
 
   if (clips.length > 0) clips[0].subtitles = false;
 
