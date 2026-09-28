@@ -191,7 +191,7 @@ export async function selectClips(segments, words, userPrompt, totalDurationSeco
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-120b",
+      model: "llama-3.3-70b-versatile",
       messages: messages,
     });
     const rawText = (completion.choices[0].message.content || "").trim();
