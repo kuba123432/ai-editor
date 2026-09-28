@@ -17,6 +17,11 @@ import path from 'node:path';
 const FPS = 30;
 const SAMPLE_RATE = 44100;
 
+// Kolikrát se obraz zvětší před zoompanem (proti jitteru).
+// Vyšší = plynulejší zoom, ale pomalejší render a víc paměti.
+// Když se render zasekne nebo spadne, dej 3 (nebo 2).
+const UPSCALE = 4;
+
 // ---------- pomocné funkce ----------
 
 function run(cmd, args) {
@@ -72,14 +77,14 @@ async function renderClip({ input, start, end, index, tmpDir, width, height, has
   const outFile = path.join(tmpDir, `clip_${String(index).padStart(3, '0')}.mov`);
 
   // Ken Burns: zoom od 1.0 do 1+zoom přes celý klip. Střídá se přiblížení a oddálení.
-  // Obraz se před zoompanem zvětší 2x, aby zoom nedělal jitter (zaokrouhlování pozice).
+  // Obraz se před zoompanem zvětší UPSCALE-krát, aby zoom nedělal jitter (zaokrouhlování pozice).
   const zoomIn = index % 2 === 0;
   const zExpr = zoomIn
     ? `1+${zoom}*on/${frames}`
     : `1+${zoom}-${zoom}*on/${frames}`;
 
   const videoFilter =
-    `[0:v]fps=${FPS},scale=${width * 2}:${height * 2}:flags=lanczos,setsar=1,` +
+    `[0:v]fps=${FPS},scale=${width * UPSCALE}:${height * UPSCALE}:flags=lanczos,setsar=1,` +
     `zoompan=z='${zExpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${FPS},` +
     `setpts=PTS-STARTPTS,format=yuv420p[v]`;
 
