@@ -197,6 +197,8 @@ async function shortlistUnits(units, userPrompt) {
       const completion = await groq.chat.completions.create({
         model: "openai/gpt-oss-20b",
         messages: messages,
+        max_tokens: 4096,
+        reasoning_effort: "low",
       });
       const rawText = (completion.choices[0].message.content || "").trim();
       const picks = parseJsonArray(rawText);
@@ -280,6 +282,8 @@ export async function selectClips(segments, words, userPrompt, totalDurationSeco
     const completion = await groq.chat.completions.create({
       model: "openai/gpt-oss-20b",
       messages: messages,
+      max_tokens: 2048,
+      reasoning_effort: "low",
     });
     const rawText = (completion.choices[0].message.content || "").trim();
 

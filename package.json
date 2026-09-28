@@ -8,9 +8,8 @@
     "edit": "node src/index.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
-    "openai": "^4.68.0",
     "dotenv": "^16.4.5",
+    "openai": "^4.68.0",
     "yargs": "^17.7.2"
   }
 }
