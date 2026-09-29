@@ -222,7 +222,7 @@ export function picksToClips(picks, units, words, totalDurationSeconds) {
       start: start,
       end: end,
       role: String(p.role || ""),
-      subtitles: p.subtitles === true,
+      subtitles: true,
       reason: String(p.reason || ""),
       _lastWord: last.last,
       text: units
@@ -235,7 +235,7 @@ export function picksToClips(picks, units, words, totalDurationSeconds) {
   extendClipsToSentenceEnd(clips, words, totalDurationSeconds);
   extendShortClips(clips, words, totalDurationSeconds);
 
-  if (clips.length > 0) clips[0].subtitles = false;
+  // titulky na vsech usecich
 
   return clips;
 }

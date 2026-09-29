@@ -124,7 +124,7 @@ export async function buildEditedVideo(inputVideoPath, clips, outputPath, tmpDir
 
 export async function makeVertical(inputPath, outputPath) {
   const filter =
-    "[0:v]split=2[bg][fg];" +
+    process.argv.includes("--crop") ? "[0:v]crop=trunc(ih*9/16/2)*2:ih,scale=1080:1920:flags=lanczos,setsar=1[v]" : "[0:v]split=2[bg][fg];" +
     "[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:3[bgb];" +
     "[fg]scale=1080:-2:flags=lanczos[fgs];" +
     "[bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1[v]";
