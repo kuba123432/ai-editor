@@ -238,6 +238,35 @@ export function picksToClips(picks, units, words, totalDurationSeconds) {
   return sanitizeClips(clips, words, totalDurationSeconds);
 }
 
+const MERGE_GAP = 0.5; // klipy, ktere ve zdroji primo navazuji, se slouci
+
+function mergeContiguous(clips) {
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < clips.length && !merged; i++) {
+      for (let j = 0; j < clips.length && !merged; j++) {
+        if (i === j) continue;
+        const x = clips[i];
+        const y = clips[j];
+        const gap = y.start - x.end;
+        if (gap >= -0.05 && gap <= MERGE_GAP) {
+          console.log(
+            "    Spojuji navazujici klipy [" + x.role + "] + [" + y.role + "] " +
+              x.start.toFixed(1) + "s-" + y.end.toFixed(1) + "s"
+          );
+          x.end = y.end;
+          x.text = x.text + " " + y.text;
+          x._lastWord = y._lastWord;
+          clips.splice(j, 1);
+          merged = true;
+        }
+      }
+    }
+  }
+  return clips;
+}
+
 const MIN_KEEP_SECONDS = 2.0; // po uprave kratsi klipy zahodime
 const MAX_OVERLAP_TRIM = 1.0; // vetsi prekryv = stejny obsah, zahodime mensi klip
 const EOF_MARGIN = 0.6; // klip useknuty na konci souboru bez konce vety
@@ -293,7 +322,7 @@ export function sanitizeClips(clips, words, totalDurationSeconds) {
       );
     }
   }
-  return kept;
+  return mergeContiguous(kept);
 }
 
 function totalLength(clips) {
