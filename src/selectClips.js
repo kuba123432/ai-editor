@@ -235,9 +235,65 @@ export function picksToClips(picks, units, words, totalDurationSeconds) {
   extendClipsToSentenceEnd(clips, words, totalDurationSeconds);
   extendShortClips(clips, words, totalDurationSeconds);
 
-  // titulky na vsech usecich
+  return sanitizeClips(clips, words, totalDurationSeconds);
+}
 
-  return clips;
+const MIN_KEEP_SECONDS = 2.0; // po uprave kratsi klipy zahodime
+const MAX_OVERLAP_TRIM = 1.0; // vetsi prekryv = stejny obsah, zahodime mensi klip
+const EOF_MARGIN = 0.6; // klip useknuty na konci souboru bez konce vety
+
+export function sanitizeClips(clips, words, totalDurationSeconds) {
+  const dropped = new Set();
+
+  for (const c of clips) {
+    if (c.end >= totalDurationSeconds - EOF_MARGIN) {
+      const w = c._lastWord != null ? words[c._lastWord] : null;
+      if (w && !/[.?!…]["”]?$/.test(w.word)) dropped.add(c);
+    }
+  }
+
+  const sorted = clips
+    .filter((c) => !dropped.has(c))
+    .sort((a, b) => a.start - b.start);
+  let prev = null;
+  for (const b of sorted) {
+    if (!prev) {
+      prev = b;
+      continue;
+    }
+    const overlap = prev.end - b.start;
+    if (overlap <= 0) {
+      prev = b;
+      continue;
+    }
+    if (overlap <= MAX_OVERLAP_TRIM) {
+      const mid = (prev.end + b.start) / 2;
+      prev.end = mid;
+      b.start = mid;
+      prev = b;
+    } else if (prev.end - prev.start <= b.end - b.start) {
+      dropped.add(prev);
+      prev = b;
+    } else {
+      dropped.add(b);
+    }
+  }
+
+  for (const c of clips) {
+    if (!dropped.has(c) && c.end - c.start < MIN_KEEP_SECONDS) dropped.add(c);
+  }
+
+  const kept = clips.filter((c) => !dropped.has(c));
+  if (kept.length === 0) return clips;
+  for (const c of clips) {
+    if (dropped.has(c)) {
+      console.log(
+        "    Zahazuji klip [" + c.role + "] " + c.start.toFixed(1) + "s-" + c.end.toFixed(1) +
+          "s (prekryv, prilis kratky nebo useknuty)"
+      );
+    }
+  }
+  return kept;
 }
 
 function totalLength(clips) {
