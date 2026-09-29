@@ -124,7 +124,7 @@ function buildSentences(words, segEnds) {
   words.forEach((w, i) => {
     cur.push(w);
     const nx = words[i + 1];
-    const segBreak = nx && segEnds.some((t) => t > w.e - 0.3 && t < nx.s + 0.3);
+    const segBreak = nx && segEnds.some((t) => t > w.e + 0.35 && t < nx.s + 0.35);
     if (!nx || /[.?!…]$/.test(w.w) || nx.s - w.e > 0.8 || cur.length >= 40 || segBreak) flush();
   });
   return S;
@@ -132,17 +132,20 @@ function buildSentences(words, segEnds) {
 
 // ---------- 3) vyber klipu (AI vybira rozsah VET, takze klip je vzdy souvisly a konci na konci vety) ----------
 const SYS = (k) => `Jsi stříhač virálních krátkých videí (TikTok/Reels/Shorts), jako OpusClip. Dostaneš přepis videa, věty jsou ve formátu id|začátek_v_sekundách|text.
-Vyber maximálně ${k} nejlepších samostatných klipů. Pravidla:
+Vyber přesně ${k} nejlepších samostatných klipů. Pravidla:
 - klip je souvislý rozsah vět od start_id do end_id (včetně), nic se nevynechává ani nepřeskakuje
 - délka ${MIN}–${MAX} sekund (délku odhadni z časů vět)
 - začíná silným hookem: odvážné tvrzení, otázka, překvapivý fakt nebo začátek příběhu; nikdy uprostřed myšlenky ani slovy typu "a tak", "jo", "no"
 - končí dokončenou myšlenkou nebo pointou
 - musí být srozumitelný bez zbytku videa
+- uvnitř klipu nesmí být dlouhá pauza nebo ticho; pokud je mezi větami pauza nad cca 2,5 s, tento rozsah nevybírej
+- první věta klipu musí sama působit jako začátek; nezačínej navazovací větou typu a tak, takže, protože, ale, no, jo
+- title musí odpovídat tématu první věty klipu, ne až pozdější části
 - klipy se nesmí překrývat
 - score 0–100 = potenciál zaujmout (síla hooku, emoce, hodnota, dokončenost). Buď přísný, většina klipů má 40–80.
 - title: chytlavý titulek česky, max 60 znaků, bez emoji a uvozovek
 - reason: jedna krátká věta česky, proč klip funguje
-Odpověz POUZE JSON: {"clips":[{"start_id":0,"end_id":0,"score":0,"title":"","reason":""}]}. Pokud nic nestojí za to, vrať {"clips":[]}.`;
+Odpověz POUZE JSON: {"clips":[{"start_id":0,"end_id":0,"score":0,"title":"","reason":""}]}. Vždy vrať přesně ${k} klipů, i když nejsou dokonalé, a slabším dej nízké score. Prázdný seznam nevracej.`;
 
 async function pickClips(S, duration) {
   const WIN = 480, STEP = 420;
@@ -179,6 +182,7 @@ async function pickClips(S, duration) {
     let out;
     try {
       const c = r.choices[0].message.content;
+      if (process.env.DEBUG) console.log("AI:", c);
       out = JSON.parse(c.slice(c.indexOf("{"), c.lastIndexOf("}") + 1)).clips;
       if (!Array.isArray(out)) throw new Error("no clips");
     } catch {
@@ -189,6 +193,7 @@ async function pickClips(S, duration) {
       let a = Math.round(+c.start_id), b = Math.round(+c.end_id);
       if (!(a >= ids[0] && b <= ids[ids.length - 1] && a <= b)) continue;
       const ab = fit(a, b);
+      if (ab) { const gaps = S.slice(ab[0], ab[1] + 1); let bad = false; for (let j = 1; j < gaps.length; j++) { if (gaps[j].s - gaps[j - 1].e > 2.5) { bad = true; break; } } if (bad) continue; }
       if (!ab) continue;
       [a, b] = ab;
       cand.push({

@@ -5,7 +5,8 @@
   "type": "module",
   "description": "AI-powered video editor",
   "scripts": {
-    "edit": "node src/index.js"
+    "edit": "node src/index.js",
+    "opus": "node --env-file=.env src/opus.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

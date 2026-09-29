@@ -10,3 +10,5 @@ ai-editor@0.1.0
 node
 *.mp3
 run_cz.log
+clips/
+*.webm
