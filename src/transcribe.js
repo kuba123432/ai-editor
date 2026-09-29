@@ -33,7 +33,8 @@ export async function transcribeAudio(audioPath) {
 
   const transcription = await groq.audio.transcriptions.create({
     file: fs.createReadStream(audioPath),
-    model: "whisper-large-v3-turbo",
+    model: process.env.WHISPER_MODEL || "whisper-large-v3",
+    ...(process.env.WHISPER_LANG ? { language: process.env.WHISPER_LANG } : {}),
     response_format: "verbose_json",
     timestamp_granularities: ["segment", "word"],
   });
