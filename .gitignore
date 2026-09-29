@@ -1,0 +1,10 @@
+
+.env
+.tmp_ai_editor/
+node_modules/
+*.mp4
+*.mov
+*.png
+run.log
+ai-editor@0.1.0
+node

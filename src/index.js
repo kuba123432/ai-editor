@@ -58,6 +58,7 @@ async function main() {
   console.log("3/6 Prepisuju rec na text (Whisper)...");
   const { segments, words } = await transcribeAudio(audioPath);
   console.log("    Nalezeno " + segments.length + " useku reci, " + words.length + " slov.");
+  fs.writeFileSync(path.join(tmpDir, "transcript.json"), JSON.stringify({ segments, words }));
 
   console.log("4/6 Vybiram nejlepsi momenty podle promptu (Groq)...");
   const clips = await selectClips(segments, words, argv.prompt, durationSeconds);
