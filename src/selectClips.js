@@ -371,6 +371,8 @@ export async function selectClips(segments, words, userPrompt, totalDurationSeco
     "[{ \"from\": 4, \"to\": 5, \"role\": \"hook|kontext|payoff\", \"subtitles\": false, \"reason\": \"kratke zduvodneni\" }]\n\n" +
     "Pravidla:\n" +
     "- Cisla vet musi existovat v prepisu. Kazda veta smi byt pouzita nejvyse v jednom useku (useky se nesmi prekryvat).\n" +
+    "- Hook (prvni usek) MUSI byt cela smysluplna veta, aspon 3 sekundy dlouha. NIKDY jako hook nepouzij nazev poradu, pozdrav ani uvitani.\n" +
+    "- Nevybirej dve vety se stejnym obsahem.\n" +
     "- Vyber jen tolik useku, kolik je potreba pro souvisly pribeh s hookem, kontextem a payoffem (typicky 3-6 useku).";
 
   const baseMessages = [
