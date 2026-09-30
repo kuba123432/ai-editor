@@ -194,8 +194,8 @@ async function pickClips(S, duration) {
     for (const c of out) {
       let a = Math.round(+c.start_id), b = Math.round(+c.end_id);
       if (!(a >= ids[0] && b <= ids[ids.length - 1] && a <= b)) continue;
-      const ab = fit(a, b);
-      if (ab) { const gaps = S.slice(ab[0], ab[1] + 1); let bad = false; for (let j = 1; j < gaps.length; j++) { if (gaps[j].s - gaps[j - 1].e > 2.5) { bad = true; break; } } if (bad) { log("  zahazuji ids " + a + "-" + b + ": pauza nad 2,5 s"); continue; } }
+      let ab = fit(a, b);
+      if (ab) { let bs = ab[0], bb = ab[1], bl = 0, st = ab[0]; for (let j = ab[0]; j <= ab[1]; j++) { if (j === ab[1] || S[j + 1].s - S[j].e > 2.5) { const l = S[j].e - S[st].s; if (l > bl) { bl = l; bs = st; bb = j; } st = j + 1; } } if (bs !== ab[0] || bb !== ab[1]) { if (bl < MIN) { log(`  zahazuji ids ${a}-${b}: pauza nad 2,5 s`); continue; } log(`  orezavam ids ${a}-${b} na ${bs}-${bb}: pauza nad 2,5 s`); ab = [bs, bb]; } }
       if (!ab) { log("  zahazuji ids " + a + "-" + b + ": delka mimo limity"); continue; }
       [a, b] = ab; { const ns = await checkStart(S, a, b, MIN * 0.7); if (ns === null) { log("  zahazuji ids " + a + "-" + b + ": slaby zacatek"); continue; } a = ns; }
       cand.push({
@@ -323,6 +323,7 @@ try {
   log(`Video: ${info.w}x${info.h}, ${mmss(info.duration)}${info.w > info.h ? " (na sirku)" : " (na vysku)"}`);
 
   const tr = await transcribe(input, info.duration, dir);
+  for (const w of tr.words) w.w = w.w.replace(/^Zaban(ovi)?/, (m, x) => (x ? "Zemanovi" : "Zeman"));
   const S = buildSentences(tr.words, tr.segEnds);
   log(`Prepis: ${tr.words.length} slov, ${S.length} vet`);
   if (S.length < 3) throw new Error("Prepis je skoro prazdny (zadna rec?).");
