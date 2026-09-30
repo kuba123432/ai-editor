@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
+import { checkStart } from "./checkstart.mjs";
+import { makeTitle } from "./titles.mjs";
 
 const { values: A } = parseArgs({
   options: {
@@ -150,7 +152,7 @@ Odpověz POUZE JSON: {"clips":[{"start_id":0,"end_id":0,"score":0,"title":"","re
 async function pickClips(S, duration) {
   const WIN = 480, STEP = 420;
   const nWin = Math.max(1, Math.ceil((duration - WIN) / STEP) + 1);
-  const ask = nWin === 1 ? COUNT + 1 : Math.min(4, COUNT);
+  const ask = nWin === 1 ? COUNT + 3 : Math.min(4, COUNT);
   const len = (a, b) => S[b].e - S[a].s;
   const fit = (a, b) => {
     while (b > a && len(a, b) > MAX) b--;
@@ -193,9 +195,9 @@ async function pickClips(S, duration) {
       let a = Math.round(+c.start_id), b = Math.round(+c.end_id);
       if (!(a >= ids[0] && b <= ids[ids.length - 1] && a <= b)) continue;
       const ab = fit(a, b);
-      if (ab) { const gaps = S.slice(ab[0], ab[1] + 1); let bad = false; for (let j = 1; j < gaps.length; j++) { if (gaps[j].s - gaps[j - 1].e > 2.5) { bad = true; break; } } if (bad) continue; }
-      if (!ab) continue;
-      [a, b] = ab;
+      if (ab) { const gaps = S.slice(ab[0], ab[1] + 1); let bad = false; for (let j = 1; j < gaps.length; j++) { if (gaps[j].s - gaps[j - 1].e > 2.5) { bad = true; break; } } if (bad) { log("  zahazuji ids " + a + "-" + b + ": pauza nad 2,5 s"); continue; } }
+      if (!ab) { log("  zahazuji ids " + a + "-" + b + ": delka mimo limity"); continue; }
+      [a, b] = ab; { const ns = await checkStart(S, a, b, MIN * 0.7); if (ns === null) { log("  zahazuji ids " + a + "-" + b + ": slaby zacatek"); continue; } a = ns; }
       cand.push({
         a, b,
         start: Math.max(0, S[a].s - 0.15),
@@ -328,6 +330,7 @@ try {
   const clips = await pickClips(S, info.duration);
   if (!clips.length) throw new Error("AI nenasla zadny pouzitelny klip. Zkus jiny zdroj nebo --min 10.");
 
+  for (const c of clips) { const t = await makeTitle(S, c.a, c.b); if (t) c.title = t; }
   const report = [];
   clips.forEach((c, i) => {
     const name = `${String(i + 1).padStart(2, "0")}_score${c.score}_${slug(c.title)}.mp4`;
